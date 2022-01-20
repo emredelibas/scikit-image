@@ -3,21 +3,21 @@ Methods to characterize image textures.
 """
 
 import numpy as np
-
+import warnings
 from .._shared.utils import check_nD
-from ..color import gray2rgb
 from ..util import img_as_float
+from ..color import gray2rgb
 from ._texture import (_glcm_loop,
                        _local_binary_pattern,
                        _multiblock_lbp)
 
 
-def graycomatrix(image, distances, angles, levels=None, symmetric=False,
+def greycomatrix(image, distances, angles, levels=None, symmetric=False,
                  normed=False):
-    """Calculate the gray-level co-occurrence matrix.
+    """Calculate the grey-level co-occurrence matrix.
 
-    A gray level co-occurrence matrix is a histogram of co-occurring
-    grayscale values at a given offset over an image.
+    A grey level co-occurrence matrix is a histogram of co-occurring
+    greyscale values at a given offset over an image.
 
     Parameters
     ----------
@@ -30,7 +30,7 @@ def graycomatrix(image, distances, angles, levels=None, symmetric=False,
         List of pixel pair angles in radians.
     levels : int, optional
         The input image should contain integers in [0, `levels`-1],
-        where levels indicate the number of gray-levels counted
+        where levels indicate the number of grey-levels counted
         (typically 256 for an 8-bit image). This argument is required for
         16-bit images or higher and is typically the maximum of the image.
         As the output matrix is at least `levels` x `levels`, it might
@@ -50,25 +50,20 @@ def graycomatrix(image, distances, angles, levels=None, symmetric=False,
     Returns
     -------
     P : 4-D ndarray
-        The gray-level co-occurrence histogram. The value
-        `P[i,j,d,theta]` is the number of times that gray-level `j`
+        The grey-level co-occurrence histogram. The value
+        `P[i,j,d,theta]` is the number of times that grey-level `j`
         occurs at a distance `d` and at an angle `theta` from
-        gray-level `i`. If `normed` is `False`, the output is of
+        grey-level `i`. If `normed` is `False`, the output is of
         type uint32, otherwise it is float64. The dimensions are:
         levels x levels x number of distances x number of angles.
 
     References
     ----------
-    .. [1] M. Hall-Beyer, 2007. GLCM Texture: A Tutorial
-           https://prism.ucalgary.ca/handle/1880/51900
-           DOI:`10.11575/PRISM/33280`
-    .. [2] R.M. Haralick, K. Shanmugam, and I. Dinstein, "Textural features for
-           image classification", IEEE Transactions on Systems, Man, and
-           Cybernetics, vol. SMC-3, no. 6, pp. 610-621, Nov. 1973.
-           :DOI:`10.1109/TSMC.1973.4309314`
-    .. [3] M. Nadler and E.P. Smith, Pattern Recognition Engineering,
-           Wiley-Interscience, 1993.
-    .. [4] Wikipedia, https://en.wikipedia.org/wiki/Co-occurrence_matrix
+    .. [1] The GLCM Tutorial Home Page,
+           http://www.fp.ucalgary.ca/mhallbey/tutorial.htm
+    .. [2] Pattern Recognition Engineering, Morton Nadler & Eric P.
+           Smith
+    .. [3] Wikipedia, https://en.wikipedia.org/wiki/Co-occurrence_matrix
 
 
     Examples
@@ -80,7 +75,7 @@ def graycomatrix(image, distances, angles, levels=None, symmetric=False,
     ...                   [0, 0, 1, 1],
     ...                   [0, 2, 2, 2],
     ...                   [2, 2, 3, 3]], dtype=np.uint8)
-    >>> result = graycomatrix(image, [1], [0, np.pi/4, np.pi/2, 3*np.pi/4],
+    >>> result = greycomatrix(image, [1], [0, np.pi/4, np.pi/2, 3*np.pi/4],
     ...                       levels=4)
     >>> result[:, :, 0, 0]
     array([[2, 2, 1, 0],
@@ -113,7 +108,7 @@ def graycomatrix(image, distances, angles, levels=None, symmetric=False,
     image_max = image.max()
 
     if np.issubdtype(image.dtype, np.floating):
-        raise ValueError("Float images are not supported by graycomatrix. "
+        raise ValueError("Float images are not supported by greycomatrix. "
                          "Convert the image to an unsigned integer type.")
 
     # for image type > 8bit, levels must be set.
@@ -149,17 +144,17 @@ def graycomatrix(image, distances, angles, levels=None, symmetric=False,
     # normalize each GLCM
     if normed:
         P = P.astype(np.float64)
-        glcm_sums = np.sum(P, axis=(0, 1), keepdims=True)
+        glcm_sums = np.apply_over_axes(np.sum, P, axes=(0, 1))
         glcm_sums[glcm_sums == 0] = 1
         P /= glcm_sums
 
     return P
 
 
-def graycoprops(P, prop='contrast'):
+def greycoprops(P, prop ='contrast'):
     """Calculate texture properties of a GLCM.
 
-    Compute a feature of a gray level co-occurrence matrix to serve as
+    Compute a feature of a grey level co-occurrence matrix to serve as
     a compact summary of the matrix. The properties are computed as
     follows:
 
@@ -167,24 +162,25 @@ def graycoprops(P, prop='contrast'):
     - 'dissimilarity': :math:`\\sum_{i,j=0}^{levels-1}P_{i,j}|i-j|`
     - 'homogeneity': :math:`\\sum_{i,j=0}^{levels-1}\\frac{P_{i,j}}{1+(i-j)^2}`
     - 'ASM': :math:`\\sum_{i,j=0}^{levels-1} P_{i,j}^2`
+    - 'entropy': :math:`\\sum_{i,j=0}^{levels-1} P_{i,j}*\\ln P_{i,j}`
     - 'energy': :math:`\\sqrt{ASM}`
     - 'correlation':
         .. math:: \\sum_{i,j=0}^{levels-1} P_{i,j}\\left[\\frac{(i-\\mu_i) \\
                   (j-\\mu_j)}{\\sqrt{(\\sigma_i^2)(\\sigma_j^2)}}\\right]
 
-    Each GLCM is normalized to have a sum of 1 before the computation of
-    texture properties.
+    Each GLCM is normalized to have a sum of 1 before the computation of texture
+    properties.
 
     Parameters
     ----------
     P : ndarray
-        Input array. `P` is the gray-level co-occurrence histogram
+        Input array. `P` is the grey-level co-occurrence histogram
         for which to compute the specified property. The value
-        `P[i,j,d,theta]` is the number of times that gray-level j
+        `P[i,j,d,theta]` is the number of times that grey-level j
         occurs at a distance d and at an angle theta from
-        gray-level i.
+        grey-level i.
     prop : {'contrast', 'dissimilarity', 'homogeneity', 'energy', \
-            'correlation', 'ASM'}, optional
+            'correlation', 'ASM', 'entropy'}, optional
         The property of the GLCM to compute. The default is 'contrast'.
 
     Returns
@@ -195,10 +191,8 @@ def graycoprops(P, prop='contrast'):
 
     References
     ----------
-    .. [1] M. Hall-Beyer, 2007. GLCM Texture: A Tutorial v. 1.0 through 3.0.
-           The GLCM Tutorial Home Page,
-           https://prism.ucalgary.ca/handle/1880/51900
-           DOI:`10.11575/PRISM/33280`
+    .. [1] The GLCM Tutorial Home Page,
+           http://www.fp.ucalgary.ca/mhallbey/tutorial.htm
 
     Examples
     --------
@@ -209,12 +203,12 @@ def graycoprops(P, prop='contrast'):
     ...                   [0, 0, 1, 1],
     ...                   [0, 2, 2, 2],
     ...                   [2, 2, 3, 3]], dtype=np.uint8)
-    >>> g = graycomatrix(image, [1, 2], [0, np.pi/2], levels=4,
+    >>> g = greycomatrix(image, [1, 2], [0, np.pi/2], levels=4,
     ...                  normed=True, symmetric=True)
-    >>> contrast = graycoprops(g, 'contrast')
+    >>> contrast = greycoprops(g, 'contrast')
     >>> contrast
-    array([[0.58333333, 1.        ],
-           [1.25      , 2.75      ]])
+    array([[ 0.58333333,  1.        ],
+           [ 1.25      ,  2.75      ]])
 
     """
     check_nD(P, 4, 'P')
@@ -229,7 +223,7 @@ def graycoprops(P, prop='contrast'):
 
     # normalize each GLCM
     P = P.astype(np.float64)
-    glcm_sums = np.sum(P, axis=(0, 1), keepdims=True)
+    glcm_sums = np.apply_over_axes(np.sum, P, axes=(0, 1))
     glcm_sums[glcm_sums == 0] = 1
     P /= glcm_sums
 
@@ -241,27 +235,32 @@ def graycoprops(P, prop='contrast'):
         weights = np.abs(I - J)
     elif prop == 'homogeneity':
         weights = 1. / (1. + (I - J) ** 2)
-    elif prop in ['ASM', 'energy', 'correlation']:
+    elif prop in ['entropy', 'ASM', 'energy', 'correlation']:
         pass
     else:
         raise ValueError('%s is an invalid property' % (prop))
 
     # compute property for each GLCM
     if prop == 'energy':
-        asm = np.sum(P ** 2, axis=(0, 1))
+        asm = np.apply_over_axes(np.sum, (P ** 2), axes=(0, 1))[0, 0]
         results = np.sqrt(asm)
     elif prop == 'ASM':
-        results = np.sum(P ** 2, axis=(0, 1))
+        results = np.apply_over_axes(np.sum, (P ** 2), axes=(0, 1))[0, 0]
+    elif prop == 'entropy':
+        results = np.apply_over_axes(np.sum, (P * (np.log(P)) * -1), axes=(0, 1))[0, 0]
     elif prop == 'correlation':
         results = np.zeros((num_dist, num_angle), dtype=np.float64)
         I = np.array(range(num_level)).reshape((num_level, 1, 1, 1))
         J = np.array(range(num_level)).reshape((1, num_level, 1, 1))
-        diff_i = I - np.sum(I * P, axis=(0, 1))
-        diff_j = J - np.sum(J * P, axis=(0, 1))
+        diff_i = I - np.apply_over_axes(np.sum, (I * P), axes=(0, 1))[0, 0]
+        diff_j = J - np.apply_over_axes(np.sum, (J * P), axes=(0, 1))[0, 0]
 
-        std_i = np.sqrt(np.sum(P * (diff_i) ** 2, axis=(0, 1)))
-        std_j = np.sqrt(np.sum(P * (diff_j) ** 2, axis=(0, 1)))
-        cov = np.sum(P * (diff_i * diff_j), axis=(0, 1))
+        std_i = np.sqrt(np.apply_over_axes(np.sum, (P * (diff_i) ** 2),
+                                           axes=(0, 1))[0, 0])
+        std_j = np.sqrt(np.apply_over_axes(np.sum, (P * (diff_j) ** 2),
+                                           axes=(0, 1))[0, 0])
+        cov = np.apply_over_axes(np.sum, (P * (diff_i * diff_j)),
+                                 axes=(0, 1))[0, 0]
 
         # handle the special case of standard deviations near zero
         mask_0 = std_i < 1e-15
@@ -269,11 +268,11 @@ def graycoprops(P, prop='contrast'):
         results[mask_0] = 1
 
         # handle the standard case
-        mask_1 = ~mask_0
+        mask_1 = mask_0 == False
         results[mask_1] = cov[mask_1] / (std_i[mask_1] * std_j[mask_1])
     elif prop in ['contrast', 'dissimilarity', 'homogeneity']:
         weights = weights.reshape((num_level, num_level, 1, 1))
-        results = np.sum(P * weights, axis=(0, 1))
+        results = np.apply_over_axes(np.sum, (P * weights), axes=(0, 1))[0, 0]
 
     return results
 
@@ -303,7 +302,7 @@ def local_binary_pattern(image, P, R, method='default'):
             finer quantization of the angular space which is gray scale and
             rotation invariant.
         * 'nri_uniform': non rotation-invariant uniform patterns variant
-            which is only gray scale invariant [2]_, [3]_.
+            which is only gray scale invariant [2]_.
         * 'var': rotation invariant variance measures of the contrast of local
             image texture which is rotation but not gray scale invariant.
 
@@ -314,21 +313,14 @@ def local_binary_pattern(image, P, R, method='default'):
 
     References
     ----------
-    .. [1] T. Ojala, M. Pietikainen, T. Maenpaa, "Multiresolution gray-scale
-           and rotation invariant texture classification with local binary
-           patterns", IEEE Transactions on Pattern Analysis and Machine
-           Intelligence, vol. 24, no. 7, pp. 971-987, July 2002
-           :DOI:`10.1109/TPAMI.2002.1017623`
-    .. [2] T. Ahonen, A. Hadid and M. Pietikainen. "Face recognition with
-           local binary patterns", in Proc. Eighth European Conf. Computer
-           Vision, Prague, Czech Republic, May 11-14, 2004, pp. 469-481, 2004.
-           http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.214.6851
-           :DOI:`10.1007/978-3-540-24670-1_36`
-    .. [3] T. Ahonen, A. Hadid and M. Pietikainen, "Face Description with
-           Local Binary Patterns: Application to Face Recognition",
-           IEEE Transactions on Pattern Analysis and Machine Intelligence,
-           vol. 28, no. 12, pp. 2037-2041, Dec. 2006
-           :DOI:`10.1109/TPAMI.2006.244.`
+    .. [1] Multiresolution Gray-Scale and Rotation Invariant Texture
+           Classification with Local Binary Patterns.
+           Timo Ojala, Matti Pietikainen, Topi Maenpaa.
+           http://www.ee.oulu.fi/research/mvmp/mvg/files/pdf/pdf_94.pdf, 2002.
+    .. [2] Face recognition with local binary patterns.
+           Timo Ahonen, Abdenour Hadid, Matti Pietikainen,
+           http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.214.6851,
+           2004.
     """
     check_nD(image, 2)
 
@@ -379,11 +371,10 @@ def multiblock_lbp(int_image, r, c, width, height):
 
     References
     ----------
-    .. [1] L. Zhang, R. Chu, S. Xiang, S. Liao, S.Z. Li. "Face Detection Based
-           on Multi-Block LBP Representation", In Proceedings: Advances in
-           Biometrics, International Conference, ICB 2007, Seoul, Korea.
+    .. [1] Face Detection Based on Multi-Block LBP
+           Representation. Lun Zhang, Rufeng Chu, Shiming Xiang, Shengcai Liao,
+           Stan Z. Li
            http://www.cbsr.ia.ac.cn/users/scliao/papers/Zhang-ICB07-MBLBP.pdf
-           :DOI:`10.1007/978-3-540-74549-5_2`
     """
 
     int_image = np.ascontiguousarray(int_image, dtype=np.float32)
@@ -440,11 +431,10 @@ def draw_multiblock_lbp(image, r, c, width, height,
 
     References
     ----------
-    .. [1] L. Zhang, R. Chu, S. Xiang, S. Liao, S.Z. Li. "Face Detection Based
-           on Multi-Block LBP Representation", In Proceedings: Advances in
-           Biometrics, International Conference, ICB 2007, Seoul, Korea.
+    .. [1] Face Detection Based on Multi-Block LBP
+           Representation. Lun Zhang, Rufeng Chu, Shiming Xiang, Shengcai Liao,
+           Stan Z. Li
            http://www.cbsr.ia.ac.cn/users/scliao/papers/Zhang-ICB07-MBLBP.pdf
-           :DOI:`10.1007/978-3-540-74549-5_2`
     """
 
     # Default colors for regions.
